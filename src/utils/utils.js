@@ -18,3 +18,4 @@ export function generateRandomXYZPositionLessThan1000(){
         ]
         return positionsArr
     }
+

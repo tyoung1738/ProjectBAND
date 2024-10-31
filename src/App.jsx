@@ -4,8 +4,12 @@ import './App.css';
 import SceneInit from './SceneInit';
 import * as THREE from 'three';
 import { GUI } from 'dat.gui';
+import { FBXLoader } from 'three/examples/jsm/Addons.js';
 import * as CANNON from 'cannon-es'
 import CannonDebugger from 'cannon-es-debugger'
+let raycaster
+let clickMarker
+const fbxLoader = new FBXLoader();
 
 function App() {
   const sceneInit = useRef(null);
@@ -15,6 +19,8 @@ function App() {
     sceneInitRef.initialize();
     sceneInitRef.animate();
     sceneInit.current = sceneInitRef;
+
+  
 
     const physicsWorld = new CANNON.World({
       gravity: new CANNON.Vec3(0, -20, 0),
@@ -53,9 +59,59 @@ function App() {
       color: 0xff0000,
     });
 
+    //Raycaster for mouse interaction
+    raycaster = new THREE.Raycaster()
+
+    //Click marker to show on interaction
+    //Can improve performance if you use Buffer Geometries
+    const markerGeometry = new THREE.SphereGeometry(8, 8, 8)
+    const markerMaterial = new THREE.MeshLambertMaterial({color: 0xff0000})
+    clickMarker = new THREE.Mesh(markerGeometry, markerMaterial)
+    clickMarker.visible = false
+    sceneInitRef.scene.add(clickMarker)
+
+    window.addEventListener('pointerdown', (event)=>{
+      //cast ray from where mouse is pointing
+      const hitPoint = getHitPoint(event.clientX, event.clientY, boxMeshes, sceneInitRef.camera)
+      
+      //return if cube isn't hit
+      if (! hitPoint) {
+        console.log('no hitpoint')
+        hideClickMarker()
+        return
+      }
+
+      //get the box body from the physics world
+      const clickedBodyIndexes = []
+      const clickedBodies = []
+      hitPoint.forEach((mesh) => {
+        const index = boxMeshes.indexOf(mesh.object)
+        clickedBodyIndexes.push(index)
+        clickedBodies.push(physicsWorld.bodies[index])
+      })
+      //const clickedBodies = physicsWorld.bodies[clickedBodyIndexes];
+      console.log(clickedBodyIndexes, 'clicked indexes');
+      console.log('first clicked body', physicsWorld.bodies[clickedBodyIndexes[0]])
+
+      if(!clickedBodyIndexes.length){
+        console.error('no bodies found associated with mesh')
+        return
+      }
+
+      //apply impulse
+      const impulseDirection = new CANNON.Vec3(1,10,1);
+      const impulseForce = 1000
+      clickedBodies.forEach((body, i)=>{
+        console.log('applying impulse')
+        body.applyImpulse(hitPoint[0].point,impulseDirection.scale(impulseForce))
+      })
+
+      showClickMarker()
+    })
+
     const animate = () => {
       physicsWorld.fixedStep();
-      cannonDebugger.update();
+      //cannonDebugger.update();
 
       //Update each box mesh position and rotation based on its body
       boxMeshes.forEach((boxMesh, index) => {
@@ -73,9 +129,35 @@ function App() {
 
   }, []);
 
+  //util functions
+  function getHitPoint(clientX, clientY, meshes, camera){
+
+    //get 3D point from the client x y
+    const mouse = new THREE.Vector2()
+    mouse.x = (clientX / window.innerWidth) * 2 - 1
+    mouse.y = -((clientY / window.innerHeight) * 2 - 1)
+
+    // get the picking ray from the point
+    raycaster.setFromCamera(mouse, camera)
+
+    //find out if there's a hit
+    const hits = raycaster.intersectObjects(meshes)
+    console.log('hits--->', hits)
+    //return closest hit or undefined
+    return hits.length > 0 ? hits : undefined
+  }
+
+  function showClickMarker(){
+    clickMarker.visible = true
+  }
+
+  function hideClickMarker(){
+    clickMarker.visible = false
+  }
+
   const resetCamera = () => {
     console.log('Camera reset');
-    sceneInit.current.camera.position.set(0, 100, 10);
+    sceneInit.current.camera.position.set(0, 500, 10);
   };
 
   return (
